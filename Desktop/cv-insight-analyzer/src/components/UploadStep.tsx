@@ -130,8 +130,23 @@ const UploadStep = () => {
       setCurrentStep('assessment');
     } catch (error) {
       console.error('Error generating questions:', error);
-      setError(error instanceof Error ? error.message : 'Failed to generate assessment questions');
-      toast.error('Failed to generate assessment questions. Using default questions instead.');
+      
+      // More specific error handling
+      let errorMessage = 'Failed to generate assessment questions';
+      if (error instanceof Error) {
+        if (error.message.includes('parse')) {
+          errorMessage = 'Failed to parse AI response. This might be due to API formatting issues.';
+        } else if (error.message.includes('429')) {
+          errorMessage = 'API quota exceeded. Please try again later.';
+        } else if (error.message.includes('Empty response')) {
+          errorMessage = 'AI service returned empty response. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setError(errorMessage);
+      toast.error(`${errorMessage} Using default questions instead.`);
       
       // Improved fallback questions that are domain-agnostic
       setAssessmentQuestions([

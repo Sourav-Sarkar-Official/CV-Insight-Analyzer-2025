@@ -22,6 +22,19 @@ const CircleProgress = ({
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (value / 100) * circumference;
   
+  // Determine color based on score
+  const getColorClass = (score: number) => {
+    if (score >= 80) return 'stroke-green-500';
+    if (score >= 60) return 'stroke-yellow-500';
+    return 'stroke-red-500';
+  };
+  
+  const getBgColorClass = (score: number) => {
+    if (score >= 80) return 'stroke-green-100';
+    if (score >= 60) return 'stroke-yellow-100';
+    return 'stroke-red-100';
+  };
+  
   return (
     <div className={cn("relative flex items-center justify-center", className)}>
       <svg 
@@ -34,7 +47,8 @@ const CircleProgress = ({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          className="progress-circle-bg"
+          className={cn("fill-none", getBgColorClass(value))}
+          style={{ strokeWidth }}
         />
         <circle
           cx={size / 2}
@@ -42,13 +56,14 @@ const CircleProgress = ({
           r={radius}
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
-          className="progress-circle animate-circle-progress"
+          className={cn("fill-none transition-all duration-1000 ease-in-out", getColorClass(value))}
+          style={{ strokeWidth }}
         />
       </svg>
       {showValue && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-2xl font-semibold">{value}</span>
-          {label && <span className="text-xs mt-1 text-muted-foreground">{label}</span>}
+          <span className="text-3xl font-bold text-gray-900">{value}</span>
+          {label && <span className="text-sm font-medium text-gray-600 mt-1">{label}</span>}
         </div>
       )}
     </div>

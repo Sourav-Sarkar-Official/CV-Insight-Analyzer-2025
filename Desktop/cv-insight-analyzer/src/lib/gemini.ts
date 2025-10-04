@@ -6,6 +6,23 @@ const importGoogleGenerativeAI = async () => {
   return { GoogleGenerativeAI };
 };
 
+// Test function to verify question generation
+export const testQuestionGeneration = async () => {
+  const testResume = "John Doe\nSoftware Engineer\n\nExperience:\n- Full Stack Developer at XYZ Corp (2020-Present)\n- Frontend Developer at ABC Inc (2018-2020)\n\nSkills:\n- JavaScript, React, Node.js, MongoDB\n- MERN Stack development\n- RESTful API design\n- Docker, AWS\n\nEducation:\n- Bachelor of Science in Computer Science";
+  
+  const testJobDescription = "We are looking for a Senior Full Stack Developer with experience in React, Node.js, and cloud technologies. The ideal candidate should have strong problem-solving skills and experience with modern web development frameworks.";
+  
+  try {
+    console.log("Testing question generation...");
+    const result = await generateAssessmentQuestions(testResume, testJobDescription);
+    console.log("Test successful:", result);
+    return result;
+  } catch (error) {
+    console.error("Test failed:", error);
+    throw error;
+  }
+};
+
 // Mock data for when API quota is exhausted
 const mockResumeAnalysis = {
   matchedSkills: ["JavaScript", "React", "Frontend development"],
@@ -83,7 +100,9 @@ export const initializeGeminiModel = async () => {
 };
 
 // Generate assessment questions based on resume and job description
-export const generateAssessmentQuestions = async (resumeText: string, jobDescription: string = "") => {
+export const generateAssessmentQuestions = async (resumeText: string, jobDescription: string = "", retryCount = 0) => {
+  const maxRetries = 2;
+  
   try {
     const model = await initializeGeminiModel();
     const chatSession = model.startChat({
@@ -131,7 +150,11 @@ export const generateAssessmentQuestions = async (resumeText: string, jobDescrip
       4. Avoid open-ended questions that require lengthy responses
       5. Focus on key technical knowledge verification, not experience storytelling
       
-      IMPORTANT: Respond ONLY with the JSON object, with no additional text before or after.
+      IMPORTANT: 
+      - Respond ONLY with the JSON object, no additional text before or after
+      - Do not wrap the JSON in markdown code blocks
+      - Ensure the JSON is valid and properly formatted
+      - The response must start with { and end with }
       `;
     } else {
       // If no job description, generate questions based solely on resume content and professional domain
@@ -164,7 +187,11 @@ export const generateAssessmentQuestions = async (resumeText: string, jobDescrip
       5. Avoid open-ended questions that require lengthy responses
       6. Focus on key knowledge verification in their specific field, not experience storytelling
       
-      IMPORTANT: Respond ONLY with the JSON object, with no additional text before or after.
+      IMPORTANT: 
+      - Respond ONLY with the JSON object, no additional text before or after
+      - Do not wrap the JSON in markdown code blocks
+      - Ensure the JSON is valid and properly formatted
+      - The response must start with { and end with }
       `;
     }
 
@@ -181,22 +208,60 @@ export const generateAssessmentQuestions = async (resumeText: string, jobDescrip
     
     // Parse the JSON response
     try {
-      // Find JSON in the response text (in case there's any extra text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error("No JSON found in the response");
-        throw new Error("No JSON found in the response");
+      console.log("Full response text:", responseText);
+      
+      // Clean the response text - remove any markdown formatting or extra text
+      let cleanResponse = responseText.trim();
+      
+      // Remove markdown code blocks if present
+      cleanResponse = cleanResponse.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      
+      // Try to find JSON object boundaries more precisely
+      const jsonStart = cleanResponse.indexOf('{');
+      const jsonEnd = cleanResponse.lastIndexOf('}');
+      
+      if (jsonStart === -1 || jsonEnd === -1 || jsonStart >= jsonEnd) {
+        console.error("No valid JSON object found in response");
+        console.error("Response content:", cleanResponse);
+        throw new Error("No valid JSON object found in response");
       }
       
-      const parsedData = JSON.parse(jsonMatch[0]);
-      console.log("Successfully parsed questions:", parsedData.questions?.length || 0);
+      const jsonString = cleanResponse.substring(jsonStart, jsonEnd + 1);
+      console.log("Extracted JSON string:", jsonString);
+      
+      const parsedData = JSON.parse(jsonString);
+      
+      // Validate the parsed data structure
+      if (!parsedData || typeof parsedData !== 'object') {
+        throw new Error("Parsed data is not a valid object");
+      }
+      
+      if (!parsedData.questions || !Array.isArray(parsedData.questions)) {
+        throw new Error("Parsed data does not contain a valid questions array");
+      }
+      
+      console.log("Successfully parsed questions:", parsedData.questions.length);
       return parsedData;
     } catch (parseError) {
       console.error("Error parsing Gemini response:", parseError);
-      throw new Error("Failed to parse Gemini response");
+      console.error("Response that failed to parse:", responseText);
+      
+      // Retry if we haven't exceeded max retries and it's a parsing error
+      if (retryCount < maxRetries && parseError instanceof Error) {
+        console.log(`Retrying question generation (attempt ${retryCount + 1}/${maxRetries})`);
+        return generateAssessmentQuestions(resumeText, jobDescription, retryCount + 1);
+      }
+      
+      throw new Error(`Failed to parse Gemini response: ${parseError.message}`);
     }
   } catch (error) {
     console.error("Error generating assessment questions:", error);
+    
+    // Retry if we haven't exceeded max retries and it's not a quota error
+    if (retryCount < maxRetries && error instanceof Error && !error.message.includes("429")) {
+      console.log(`Retrying question generation (attempt ${retryCount + 1}/${maxRetries})`);
+      return generateAssessmentQuestions(resumeText, jobDescription, retryCount + 1);
+    }
     
     // Check for quota exceeded error (status 429)
     if (error instanceof Error && error.message.includes("429")) {
